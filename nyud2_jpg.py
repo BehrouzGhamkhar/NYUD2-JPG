@@ -1,5 +1,11 @@
 import h5py
 import scipy.io
+import os
+import numpy
+import matplotlib.pyplot as plt
+
+required_classes = ['bathtub', 'bed', 'bookshelf', 'box', 'chair', 'counter', 'desk', 'door', 'dresser', 'garbage bin', \
+                    'lamp', 'monitor', 'night stand', 'pillow', 'sink', 'sofa', 'table', 'television', 'toilet']
 
 def get_names(dataset):
 
@@ -14,7 +20,7 @@ def get_names(dataset):
 
     return label_dict
 
-def load_dataset(dataset_path, splits_path):
+def load_dataset_file(dataset_path, splits_path):
     dataset = h5py.File(dataset_path, 'r')
     splits = scipy.io.loadmat(splits_path)
     output_dict = dict()
@@ -27,12 +33,55 @@ def load_dataset(dataset_path, splits_path):
 
     return output_dict
 
-path = './nyu_depth_v2_labeled.mat'
+def make_required_class_directories():
+    for required_class in required_classes:
+        required_class_path = os.path.join('Dataset', required_class)
+        if not os.path.exists(required_class_path):
+            os.makedirs(required_class_path)
 
-# names = load_dataset_class_names(path)
-# label_dict = get_all_labels(names)
+def extract_data_from_split(dataset, split):
+    split_size = dataset[split].shape[0]
+    images = numpy.zeros((split_size, 3, 640, 480), dtype=numpy.uint8)
+    depths = numpy.zeros((split_size, 3, 640, 480), dtype=numpy.uint8)
+    labels = numpy.zeros((split_size, 640, 480), dtype=numpy.uint16)
 
-# print(label_dict)
+    for index in range(split_size):
+        access_index = dataset[split][index][0] - 1
+        image = dataset['images'][access_index]
+        images[index] = image
 
-a = load_dataset('nyud2.mat', 'splits.mat')
-print(a['names'])
+        depth = dataset['depths'][access_index]
+        depth = (depth - numpy.min(depth)) * 255 / (numpy.max(depth) - numpy.min(depth)) # convert to [0, 255]
+        depths[index][0] = depth
+        depths[index][1] = depth
+        depths[index][2] = depth
+        
+        label = dataset['labels'][access_index]
+        labels[index] = label
+
+        print(f'Extracted {index}/{split_size} from {split}')
+
+    images = numpy.moveaxis(images, 1, -1)
+    images = numpy.moveaxis(images, 1, 2)
+    depths = numpy.moveaxis(depths, 1, -1)
+    depths = numpy.moveaxis(depths, 1, 2)
+    labels = numpy.moveaxis(labels, 1, 2)
+
+    return images, depths, labels
+
+def extract_dataset(split):
+    make_required_class_directories()
+
+dataset = load_dataset_file('nyud2.mat', 'splits.mat')
+images, depths, labels = extract_data_from_split(dataset, 'test_split')
+print(images.shape, depths.shape, labels.shape)
+
+while True:
+    index = int(input("Enter index: "))
+    print(numpy.unique(depths[index]))
+    plt.imshow(images[index])
+    plt.show()
+    plt.imshow(depths[index])
+    plt.show()
+    plt.imshow(labels[index])
+    plt.show()
