@@ -1,15 +1,26 @@
 import h5py
 
-# data path
-path_to_depth = './nyu_depth_v2_labeled.mat'
+def load_dataset_class_names(path_to_depth):
+    
+    image_dataset = h5py.File(path_to_depth)
+    return image_dataset['names'][()]
 
-# read mat file
-image_dataset = h5py.File(path_to_depth)
-temp1 = image_dataset['names'][()]
-for i in temp1[0]:
-  m_reference = i
-  m_object = image_dataset[m_reference]
-  m_string = ''
-  for i in m_object:
-    m_string = m_string + chr(i[0])
-  print(m_string)
+def get_all_labels(names):
+
+    label_dict = {}
+
+    for index, ref_name in enumerate(names[0]):
+        name = image_dataset[ref_name]
+        m_string = ''
+        for letter in name:
+            m_string = m_string + chr(letter[0])
+        label_dict[index] = m_string
+
+    return label_dict
+
+path = './nyu_depth_v2_labeled.mat'
+
+names = load_dataset_class_names(path)
+label_dict = get_all_labels(names)
+
+print(label_dict)
