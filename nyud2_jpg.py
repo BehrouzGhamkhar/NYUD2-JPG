@@ -3,22 +3,20 @@ import scipy.io
 import os
 import numpy
 import matplotlib.pyplot as plt
+from PIL import Image
 
 required_classes = ['bathtub', 'bed', 'bookshelf', 'box', 'chair', 'counter', 'desk', 'door', 'dresser', 'garbage bin', \
                     'lamp', 'monitor', 'night stand', 'pillow', 'sink', 'sofa', 'table', 'television', 'toilet']
 
 def get_names(dataset):
-
-    label_dict = {}
-
-    for index, ref_name in enumerate(dataset['names'][0]):
+    names = list()
+    for ref_name in dataset['names'][0]:
         name = dataset[ref_name]
         m_string = ''
         for letter in name:
             m_string = m_string + chr(letter[0])
-        label_dict[index] = m_string
-
-    return label_dict
+        names.append(m_string)
+    return names
 
 def load_dataset_file(dataset_path, splits_path):
     dataset = h5py.File(dataset_path, 'r')
@@ -28,16 +26,10 @@ def load_dataset_file(dataset_path, splits_path):
     output_dict['depths'] = dataset['depths']
     output_dict['labels'] = dataset['labels']
     output_dict['names'] = get_names(dataset)
-    output_dict['train_split'] = splits['trainNdxs']
-    output_dict['test_split'] = splits['testNdxs']
+    output_dict['training_split'] = splits['trainNdxs']
+    output_dict['testing_split'] = splits['testNdxs']
 
     return output_dict
-
-def make_required_class_directories():
-    for required_class in required_classes:
-        required_class_path = os.path.join('Dataset', required_class)
-        if not os.path.exists(required_class_path):
-            os.makedirs(required_class_path)
 
 def extract_data_from_split(dataset, split):
     split_size = dataset[split].shape[0]
@@ -59,7 +51,7 @@ def extract_data_from_split(dataset, split):
         label = dataset['labels'][access_index]
         labels[index] = label
 
-        print(f'Extracted {index}/{split_size} from {split}')
+        print(f'Extracted {index + 1}/{split_size} from {split}.')
 
     images = numpy.moveaxis(images, 1, -1)
     images = numpy.moveaxis(images, 1, 2)
@@ -69,19 +61,46 @@ def extract_data_from_split(dataset, split):
 
     return images, depths, labels
 
+def crop_data(images, depths, labels, names, split):
+    counter = 0
+    for index in range(images.shape[0]):
+        image = images[index]
+        depth = depths[index]
+        label = labels[index]
+
+        for obj in numpy.unique(label):
+            if obj > 0 and names[obj - 1] in required_classes:
+                label_obj = numpy.argwhere(label == obj)
+                minx, miny = numpy.min(label_obj, axis=0)
+                maxx, maxy = numpy.max(label_obj, axis=0)
+
+                image_obj = image[minx:maxx + 1, miny:maxy + 1, :]
+                depth_obj = depth[minx:maxx + 1, miny:maxy + 1, :]
+
+                image_obj_pil = Image.fromarray(image_obj)
+                depth_obj_pil = Image.fromarray(depth_obj)
+
+                image_obj_pil.save(os.path.join('Dataset', split[:-6], 'RGB', names[obj - 1], str(counter) + '.jpg'))
+                depth_obj_pil.save(os.path.join('Dataset', split[:-6], 'depth', names[obj - 1], str(counter) + '.jpg'))
+                
+                print(f'Saved {counter}.jpg.')
+                counter += 1
+
+        print(f'Processed {index + 1}/{images.shape[0]} from {split}.')
+
+
+def make_required_class_directories(split, modality):
+    for required_class in required_classes:
+        required_class_path = os.path.join('Dataset', split[:-6], modality, required_class)
+        if not os.path.exists(required_class_path):
+            os.makedirs(required_class_path)
+
 def extract_dataset(split):
-    make_required_class_directories()
+    make_required_class_directories(split, 'RGB')
+    make_required_class_directories(split, 'depth')
+    dataset = load_dataset_file('nyud2.mat', 'splits.mat')
+    images, depths, labels = extract_data_from_split(dataset, split)
+    crop_data(images, depths, labels, dataset['names'], split)
 
-dataset = load_dataset_file('nyud2.mat', 'splits.mat')
-images, depths, labels = extract_data_from_split(dataset, 'test_split')
-print(images.shape, depths.shape, labels.shape)
-
-while True:
-    index = int(input("Enter index: "))
-    print(numpy.unique(depths[index]))
-    plt.imshow(images[index])
-    plt.show()
-    plt.imshow(depths[index])
-    plt.show()
-    plt.imshow(labels[index])
-    plt.show()
+extract_dataset('training_split')
+extract_dataset('testing_split')
